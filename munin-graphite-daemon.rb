@@ -9,4 +9,4 @@ options = {
   :log_output => true,
 }
 
-Daemons.run('munin-graphite.rb', options)
+Daemons.run('/opt/graphite/munin-graphite/munin-graphite.rb', options)

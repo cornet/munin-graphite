@@ -24,6 +24,8 @@
 # 
 
 require 'socket'
+require 'rubygems'
+require 'amqp'
 
 class Munin
   def initialize(host='localhost', port=4949)
@@ -67,6 +69,22 @@ class Carbon
   end
 end
 
+class CarbonMQ
+  def initialize(host='localhost', port=5672, user='graphite', pass='gr4ph1t3')
+    @connection = AMQP.connect(:host => host, :port => port, :user => user, :pass => pass)
+    @channel = AMQP::Channel.new(connection)
+    @exchange = channel.topic('graphite')
+  end
+
+  def send(msg)
+    @exchange.publish msg
+  end
+
+  def close
+    @connection.close
+  end
+end
+
 while true
   metric_base = "servers."
   all_metrics = Array.new
@@ -99,11 +117,22 @@ while true
     end
   end
 
-  carbon = Carbon.new(ARGV[1])
-  all_metrics.each do |m|
-    puts "Sending #{m}"
-    carbon.send(m)
+  AMQP.start(:host => 'localhost', :port => 5672, :user => 'graphite', :pass => 'gr4ph1t3') do |connection|
+    channel  = AMQP::Channel.new(connection)
+    exchange = channel.topic('graphite', :durable => true)
+
+    all_metrics.each do |m|
+      (key, msg) = m.split(' ',2)
+      puts "Sending #{key} #{msg}"
+      exchange.publish("#{key} #{msg}", :routing_key => key, :durable => true)
+    end
+
+    EventMachine.add_timer(2) do
+      connection.close { EventMachine.stop }
+    end
+
   end
+
   sleep 60
 end
 
